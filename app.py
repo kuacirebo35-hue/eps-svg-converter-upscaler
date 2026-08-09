@@ -67,7 +67,6 @@ def convert_files(files, mode, upscale_str):
         fsize = format_size(os.path.getsize(in_path))
         table_data.append([i + 1, fname, fsize, "⏳ Menunggu..."])
     
-    # Munculkan tabel awal ke UI
     yield None, table_data
 
     zip_filename = "Hasil_Konversi_Batch.zip"
@@ -81,9 +80,6 @@ def convert_files(files, mode, upscale_str):
             table_data[i][3] = "🔄 Memproses..."
             yield None, table_data
 
-            # ==========================================
-            # MODE 1: SVG ke SVG (Hanya Upscale)
-            # ==========================================
             if mode == "SVG ke SVG (Upscale)":
                 if not filename.lower().endswith('.svg'):
                     table_data[i][3] = "❌ Gagal (Bukan SVG)"
@@ -103,9 +99,6 @@ def convert_files(files, mode, upscale_str):
                 yield None, table_data
                 continue
 
-            # ==========================================
-            # MODE 2: EPS ke EPS (Hanya Upscale)
-            # ==========================================
             if mode == "EPS ke EPS (Upscale)":
                 if not filename.lower().endswith('.eps'):
                     table_data[i][3] = "❌ Gagal (Bukan EPS)"
@@ -115,7 +108,6 @@ def convert_files(files, mode, upscale_str):
                 out_filename = os.path.splitext(filename)[0] + f"_{scale_factor}x.eps"
                 out_path = os.path.join(os.path.dirname(in_path), out_filename)
                 
-                # Jika tidak diupscale, cukup copy saja
                 if scale_factor == 1:
                     shutil.copy2(in_path, out_path)
                     zipf.write(out_path, arcname=out_filename)
@@ -124,16 +116,12 @@ def convert_files(files, mode, upscale_str):
                     yield None, table_data
                     continue
                     
-                # Jika diupscale, harus melewati fase SVG sementara
                 temp_svg = in_path + ".temp.svg"
                 cmd1 = ["inkscape", in_path, "--export-type=svg", f"--export-filename={temp_svg}"]
                 
                 try:
-                    # Proses 1: EPS -> SVG
                     subprocess.run(cmd1, capture_output=True, text=True, check=True)
-                    # Proses 2: Upscale SVG
                     scale_svg_math(temp_svg, scale_factor)
-                    # Proses 3: SVG -> EPS
                     cmd2 = ["inkscape", temp_svg, "--export-type=eps", f"--export-filename={out_path}"]
                     subprocess.run(cmd2, capture_output=True, text=True, check=True)
                     
@@ -149,9 +137,6 @@ def convert_files(files, mode, upscale_str):
                 yield None, table_data
                 continue
 
-            # ==========================================
-            # MODE 3 & 4: EPS ke SVG atau SVG ke EPS
-            # ==========================================
             out_ext = ".svg" if mode == "EPS ke SVG" else ".eps"
             out_filename = os.path.splitext(filename)[0] + out_ext
             out_path = os.path.join(os.path.dirname(in_path), out_filename)
@@ -190,30 +175,29 @@ def convert_files(files, mode, upscale_str):
             except Exception as e:
                 table_data[i][3] = "❌ Error Sistem"
 
-            # Refresh tabel setelah 1 file selesai
             yield None, table_data
 
-    # Proses selesai, kirimkan file ZIP dan tabel final
     yield zip_path, table_data
 
 
 # ==========================================
-# TAMPILAN UI
+# TAMPILAN UI - LAYOUT BARU BERSUSUN
 # ==========================================
 custom_css = """
 .gradio-container { max-width: 1050px !important; margin: auto; padding: 20px; }
-.file-upload-box { max-height: 280px !important; overflow-y: auto !important; }
+.file-upload-box { max-height: 250px !important; overflow-y: auto !important; }
 .wa-link { display: inline-block; padding: 10px 20px; background-color: #25D366; color: white !important; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 14px; margin-top: 10px; transition: 0.2s; }
 .wa-link:hover { background-color: #1DA851; transform: translateY(-2px); }
-.table-wrap { max-height: 350px !important; overflow-y: auto !important; }
+.table-wrap { max-height: 350px !important; overflow-y: auto !important; width: 100% !important; }
 """
 
 theme = gr.themes.Soft(primary_hue="blue", neutral_hue="slate")
 
 with gr.Blocks(theme=theme, css=custom_css) as app:
     
+    # 1. HEADER UTAMA
     gr.HTML('''
-        <div style="text-align: center; margin-bottom: 30px; padding-bottom: 10px; border-bottom: 1px solid #eaeaea;">
+        <div style="text-align: center; margin-bottom: 25px; padding-bottom: 10px; border-bottom: 1px solid #eaeaea;">
             <h1 style="color: #1e293b; font-weight: 800; font-size: 28px; margin-bottom: 5px;">
                 ⚡ EPS TO SVG CONVERTER
             </h1>
@@ -226,11 +210,11 @@ with gr.Blocks(theme=theme, css=custom_css) as app:
         </div>
     ''')
 
+    # 2. PANEL ATAS (Pengaturan & Hasil Download)
     with gr.Row():
-        with gr.Column(scale=1, min_width=320):
-            gr.Markdown("### ⚙️ Pengaturan & Input")
+        with gr.Column(scale=1, min_width=300):
+            gr.Markdown("### ⚙️ Pengaturan Input")
             with gr.Row():
-                # Opsi EPS ke EPS sudah ditambahkan di sini
                 mode_input = gr.Dropdown(
                     choices=["EPS ke SVG", "SVG ke EPS", "SVG ke SVG (Upscale)", "EPS ke EPS (Upscale)"], 
                     value="EPS ke SVG", 
@@ -241,24 +225,30 @@ with gr.Blocks(theme=theme, css=custom_css) as app:
                     value="4x", 
                     label="Upscale Vektor"
                 )
-            
-            file_input = gr.File(label="Tarik & Lepas File Di Sini", file_count="multiple", elem_classes="file-upload-box")
-            btn_convert = gr.Button("🚀 MULAI KONVERSI SEKARANG", variant="primary", size="lg")
-
-        with gr.Column(scale=1, min_width=320):
-            gr.Markdown("### 📥 Hasil & Monitor")
+                
+        with gr.Column(scale=1, min_width=300):
+            gr.Markdown("### 📥 Hasil Monitor")
             file_output = gr.File(label="Download File ZIP Di Sini", file_count="single")
-            
-            # Ini adalah Tabel yang akan menampilkan Nomor dan Status Sukses
-            log_output = gr.Dataframe(
-                headers=["No", "Nama File", "Size", "Keterangan"],
-                datatype=["number", "str", "str", "str"],
-                label="Status Antrean (Live Tabel)",
-                interactive=False,
-                wrap=True,
-                elem_classes="table-wrap"
-            )
 
+    # 3. AREA UPLOAD FILE (Melebar Penuh)
+    gr.Markdown("### 📂 Tarik & Lepas File Di Sini")
+    file_input = gr.File(label="Upload Banyak File Sekaligus", file_count="multiple", elem_classes="file-upload-box")
+    
+    # 4. TOMBOL KONVERSI (Melebar Penuh)
+    btn_convert = gr.Button("🚀 MULAI KONVERSI SEKARANG", variant="primary", size="lg")
+
+    # 5. AREA TABEL LIVE LOG (Melebar Penuh di Bawah)
+    gr.Markdown("### 🖥️ Status Antrean (Live Tabel)")
+    log_output = gr.Dataframe(
+        headers=["No", "Nama File", "Size", "Keterangan"],
+        datatype=["number", "str", "str", "str"],
+        label="Daftar Proses",
+        interactive=False,
+        wrap=True,
+        elem_classes="table-wrap"
+    )
+
+    # 6. FOOTER
     gr.HTML('''
         <div style="text-align: center; margin-top: 50px; border-top: 1px solid #eaeaea; padding-top: 20px;">
             <p style="font-size: 13px; color: #64748b; margin-bottom: 5px;">
@@ -270,6 +260,7 @@ with gr.Blocks(theme=theme, css=custom_css) as app:
         </div>
     ''')
 
+    # TRIGGERS
     btn_convert.click(
         fn=convert_files, 
         inputs=[file_input, mode_input, upscale_input], 
