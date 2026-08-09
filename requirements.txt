@@ -1,1 +1,4 @@
 gradio
+tinycss2
+cssselect
+lxml
