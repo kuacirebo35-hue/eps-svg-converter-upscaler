@@ -4,6 +4,7 @@ import xml.etree.ElementTree as ET
 import os
 import shutil
 import re
+import zipfile # Modul baru untuk membuat file ZIP
 
 def scale_svg_math(svg_path, scale):
     try:
@@ -41,118 +42,96 @@ def scale_svg_math(svg_path, scale):
 
 def convert_files(files, mode, upscale_str):
     if not files:
-        return [], "Tidak ada file yang dipilih."
+        return None, "Tidak ada file yang dipilih."
     
     scale_factor = 1
     if upscale_str != "1x (Original)":
         scale_factor = int(upscale_str.replace("x", ""))
 
-    hasil_konversi = []
     log_messages = []
+    
+    # 1. Menyiapkan File ZIP penampung
+    zip_filename = "Hasil_Konversi_Batch.zip"
+    zip_path = os.path.join(os.getcwd(), zip_filename)
+    
+    # Buka ZIP dalam mode 'write'
+    with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+        for file_obj in files:
+            in_path = file_obj if isinstance(file_obj, str) else file_obj.name
+            filename = os.path.basename(in_path)
+            log_messages.append(f"⏳ Memproses: {filename}...")
 
-    for file_obj in files:
-        in_path = file_obj if isinstance(file_obj, str) else file_obj.name
-        filename = os.path.basename(in_path)
-        log_messages.append(f"⏳ Memproses: {filename}...")
+            out_ext = ".svg" if mode == "EPS ke SVG" else ".eps"
+            out_filename = os.path.splitext(filename)[0] + out_ext
+            out_path = os.path.join(os.path.dirname(in_path), out_filename)
+            target_in_path = in_path
+            temp_svg = None
 
-        out_ext = ".svg" if mode == "EPS ke SVG" else ".eps"
-        out_filename = os.path.splitext(filename)[0] + out_ext
-        out_path = os.path.join(os.path.dirname(in_path), out_filename)
-        target_in_path = in_path
-        temp_svg = None
+            if mode == "SVG ke EPS" and scale_factor > 1:
+                temp_svg = in_path + ".temp.svg"
+                shutil.copy2(in_path, temp_svg)
+                scale_svg_math(temp_svg, scale_factor)
+                target_in_path = temp_svg 
 
-        if mode == "SVG ke EPS" and scale_factor > 1:
-            temp_svg = in_path + ".temp.svg"
-            shutil.copy2(in_path, temp_svg)
-            scale_svg_math(temp_svg, scale_factor)
-            target_in_path = temp_svg 
+            cmd = [
+                "inkscape", target_in_path, 
+                "--export-type=svg" if mode == "EPS ke SVG" else "--export-type=eps", 
+                f"--export-filename={out_path}"
+            ]
 
-        cmd = [
-            "inkscape", target_in_path, 
-            "--export-type=svg" if mode == "EPS ke SVG" else "--export-type=eps", 
-            f"--export-filename={out_path}"
-        ]
+            try:
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                
+                # AUTO-DELETE 1: Hapus file temporary SVG jika ada
+                if temp_svg and os.path.exists(temp_svg):
+                    os.remove(temp_svg)
+                
+                if os.path.exists(out_path):
+                    if mode == "EPS ke SVG" and scale_factor > 1:
+                        scale_svg_math(out_path, scale_factor)
+                    
+                    # Masukkan file yang sudah jadi ke dalam ZIP
+                    zipf.write(out_path, arcname=out_filename)
+                    log_messages.append(f"✅ Sukses: {out_filename} (Masuk ZIP)")
+                    
+                    # AUTO-DELETE 2: Langsung hapus file hasil dari server karena sudah aman di dalam ZIP
+                    os.remove(out_path)
+                else:
+                    error_msg = result.stderr.strip()
+                    if not error_msg:
+                        error_msg = "Format tidak terbaca server."
+                    log_messages.append(f"❌ Gagal: {filename}\n   (Error: {error_msg})")
+            except Exception as e:
+                log_messages.append(f"❌ Error Sistem: {str(e)}")
 
-        try:
-            result = subprocess.run(cmd, capture_output=True, text=True)
-            if temp_svg and os.path.exists(temp_svg):
-                os.remove(temp_svg)
-            if os.path.exists(out_path):
-                if mode == "EPS ke SVG" and scale_factor > 1:
-                    scale_svg_math(out_path, scale_factor)
-                hasil_konversi.append(out_path)
-                log_messages.append(f"✅ Sukses: {out_filename}")
-            else:
-                error_msg = result.stderr.strip()
-                if not error_msg:
-                    error_msg = "Format tidak terbaca server."
-                log_messages.append(f"❌ Gagal: {filename}\n   (Error: {error_msg})")
-        except Exception as e:
-            log_messages.append(f"❌ Error Sistem: {str(e)}")
+    log_messages.append("📦 Semua proses selesai! File ZIP siap diunduh.")
+    
+    # Kembalikan 1 file ZIP saja
+    return zip_path, "\n".join(log_messages)
 
-    return hasil_konversi, "\n".join(log_messages)
-
-# --- INJEKSI CSS KUSTOM UNTUK TAMPILAN PREMIUM ---
+# --- INJEKSI CSS KUSTOM ---
 custom_css = """
 .gradio-container { max-width: 1100px !important; margin: auto; }
-.submit-btn { 
-    background: linear-gradient(90deg, #D4AF37 0%, #B5952F 100%) !important; 
-    border: none !important; 
-    color: #121212 !important; 
-    font-weight: 800 !important; 
-    font-size: 16px !important; 
-    transition: all 0.3s ease-in-out !important; 
-    box-shadow: 0 4px 10px rgba(212, 175, 55, 0.3) !important;
-}
-.submit-btn:hover { 
-    transform: scale(1.02) !important; 
-    box-shadow: 0 6px 15px rgba(212, 175, 55, 0.5) !important; 
-}
-.footer-box {
-    text-align: center; 
-    margin-top: 40px; 
-    padding: 25px; 
-    border-top: 1px solid #ddd;
-    border-radius: 10px;
-    background-color: transparent;
-}
-.wa-btn {
-    display: inline-block; 
-    padding: 12px 24px; 
-    background-color: #25D366; 
-    color: white !important; 
-    text-decoration: none; 
-    border-radius: 8px; 
-    font-weight: bold; 
-    font-size: 15px;
-    transition: 0.3s; 
-    box-shadow: 0 4px 6px rgba(37, 211, 102, 0.3);
-    margin-top: 12px;
-}
-.wa-btn:hover {
-    background-color: #1DA851;
-    transform: translateY(-2px);
-    box-shadow: 0 6px 12px rgba(37, 211, 102, 0.4);
-}
+.submit-btn { background: linear-gradient(90deg, #D4AF37 0%, #B5952F 100%) !important; border: none !important; color: #121212 !important; font-weight: 800 !important; font-size: 16px !important; transition: all 0.3s ease-in-out !important; box-shadow: 0 4px 10px rgba(212, 175, 55, 0.3) !important; }
+.submit-btn:hover { transform: scale(1.02) !important; box-shadow: 0 6px 15px rgba(212, 175, 55, 0.5) !important; }
+.footer-box { text-align: center; margin-top: 40px; padding: 25px; border-top: 1px solid #ddd; border-radius: 10px; background-color: transparent; }
+.wa-btn { display: inline-block; padding: 12px 24px; background-color: #25D366; color: white !important; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 15px; transition: 0.3s; box-shadow: 0 4px 6px rgba(37, 211, 102, 0.3); margin-top: 12px; }
+.wa-btn:hover { background-color: #1DA851; transform: translateY(-2px); box-shadow: 0 6px 12px rgba(37, 211, 102, 0.4); }
 """
 
-# Menggunakan tema dasar yang lembut agar CSS kita masuk sempurna
 with gr.Blocks(theme=gr.themes.Soft(primary_hue="amber"), css=custom_css) as app:
-    
-    # KOP ATAS (HEADER)
     gr.HTML('''
         <div style="text-align: center; margin-bottom: 30px; padding-top: 20px;">
             <h1 style="color: #D4AF37; margin-bottom: 5px; font-weight: 900; font-size: 32px;">
                 ⚡ EPS TO SVG CONVERTER PRO
             </h1>
             <p style="color: #888; font-size: 15px;">
-                Batch Converter Berbasis Cloud - Cepat, Gratis, & Stabil
+                Batch Converter Berbasis Cloud - Cepat, Gratis, & Stabil (Auto ZIP)
             </p>
         </div>
     ''')
 
     with gr.Row():
-        # KOLOM KIRI (SETTING & INPUT)
         with gr.Column(scale=1):
             gr.Markdown("### ⚙️ Panel Pengaturan")
             with gr.Group():
@@ -161,18 +140,16 @@ with gr.Blocks(theme=gr.themes.Soft(primary_hue="amber"), css=custom_css) as app
             
             gr.Markdown("### 📂 Upload File Mentah")
             file_input = gr.File(label="Tarik & Lepas File (Bisa blok banyak file)", file_count="multiple")
-            
             btn_convert = gr.Button("🚀 MULAI KONVERSI SEKARANG", elem_classes=["submit-btn"])
 
-        # KOLOM KANAN (HASIL & MONITOR)
         with gr.Column(scale=2):
-            gr.Markdown("### 📥 Hasil Unduhan")
-            file_output = gr.File(label="File Siap Download", file_count="multiple")
+            gr.Markdown("### 📥 Hasil Unduhan (Otomatis jadi 1 ZIP)")
+            # Mengubah hasil output menjadi satu file ZIP tunggal
+            file_output = gr.File(label="Download File ZIP Di Sini", file_count="single")
             
             gr.Markdown("### 🖥️ Monitor Proses")
             log_output = gr.Textbox(label="Cek status antrean dan error di sini", lines=10, interactive=False)
     
-    # KOP BAWAH (FOOTER & COPYRIGHT)
     gr.HTML('''
         <div class="footer-box">
             <p style="font-size: 14px; margin-bottom: 0px; color: #555;">
@@ -187,7 +164,6 @@ with gr.Blocks(theme=gr.themes.Soft(primary_hue="amber"), css=custom_css) as app
         </div>
     ''')
 
-    # FUNGSI KLIK
     btn_convert.click(
         fn=convert_files, 
         inputs=[file_input, mode_input, upscale_input], 
@@ -195,5 +171,4 @@ with gr.Blocks(theme=gr.themes.Soft(primary_hue="amber"), css=custom_css) as app
     )
 
 if __name__ == "__main__":
-    # Tetap membatasi 1 proses per waktu agar server aman
     app.queue(default_concurrency_limit=1).launch(server_name="0.0.0.0", server_port=10000)
