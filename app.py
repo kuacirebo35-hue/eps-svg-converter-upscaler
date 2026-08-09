@@ -6,9 +6,15 @@ import shutil
 import re
 import zipfile
 
-# ==========================================
-# FUNGSI BACKEND (TIDAK ADA YANG DIUBAH)
-# ==========================================
+# Fungsi bantuan untuk menghitung ukuran file (KB/MB)
+def format_size(size_bytes):
+    if size_bytes < 1024:
+        return f"{size_bytes} B"
+    elif size_bytes < 1024 * 1024:
+        return f"{size_bytes / 1024:.1f} KB"
+    else:
+        return f"{size_bytes / (1024 * 1024):.2f} MB"
+
 def scale_svg_math(svg_path, scale):
     try:
         ET.register_namespace('', "http://www.w3.org/2000/svg")
@@ -43,27 +49,44 @@ def scale_svg_math(svg_path, scale):
         print(f"Error scaling SVG: {e}")
         return False
 
+# MENGGUNAKAN GENERATOR (YIELD) AGAR TABEL UPDATE SECARA LIVE
 def convert_files(files, mode, upscale_str):
     if not files:
-        return None, "Tidak ada file yang dipilih."
+        yield None, [["-", "Tidak ada file yang dipilih", "-", "Error"]]
+        return
     
     scale_factor = 1
     if upscale_str != "1x (Original)":
         scale_factor = int(upscale_str.replace("x", ""))
 
-    log_messages = []
+    # 1. Menyiapkan Data Tabel Awal
+    table_data = []
+    for i, file_obj in enumerate(files):
+        in_path = file_obj if isinstance(file_obj, str) else file_obj.name
+        fname = os.path.basename(in_path)
+        fsize = format_size(os.path.getsize(in_path))
+        # Format Kolom: [No, Nama File, Size, Keterangan]
+        table_data.append([i + 1, fname, fsize, "⏳ Menunggu..."])
+    
+    # Munculkan tabel awal ke UI
+    yield None, table_data
+
     zip_filename = "Hasil_Konversi_Batch.zip"
     zip_path = os.path.join(os.getcwd(), zip_filename)
     
     with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-        for file_obj in files:
+        for i, file_obj in enumerate(files):
             in_path = file_obj if isinstance(file_obj, str) else file_obj.name
             filename = os.path.basename(in_path)
-            log_messages.append(f"⏳ Memproses: {filename}...")
+            
+            # Update status jadi Memproses dan refresh tabel
+            table_data[i][3] = "🔄 Memproses..."
+            yield None, table_data
 
             if mode == "SVG ke SVG (Upscale)":
                 if not filename.lower().endswith('.svg'):
-                    log_messages.append(f"❌ Gagal: {filename} (Bukan file SVG!)")
+                    table_data[i][3] = "❌ Gagal (Bukan SVG)"
+                    yield None, table_data
                     continue
                 
                 out_filename = os.path.splitext(filename)[0] + f"_{scale_factor}x.svg"
@@ -75,8 +98,11 @@ def convert_files(files, mode, upscale_str):
                     scale_svg_math(out_path, scale_factor)
                 
                 zipf.write(out_path, arcname=out_filename)
-                log_messages.append(f"✅ Sukses: {out_filename}")
+                table_data[i][3] = "✅ Sukses"
                 os.remove(out_path)
+                
+                # Refresh tabel setelah sukses
+                yield None, table_data
                 continue
 
             out_ext = ".svg" if mode == "EPS ke SVG" else ".eps"
@@ -107,53 +133,46 @@ def convert_files(files, mode, upscale_str):
                         scale_svg_math(out_path, scale_factor)
                     
                     zipf.write(out_path, arcname=out_filename)
-                    log_messages.append(f"✅ Sukses: {out_filename}")
+                    table_data[i][3] = "✅ Sukses"
                     os.remove(out_path)
                 else:
                     error_msg = result.stderr.strip()
                     if not error_msg:
-                        error_msg = "Format tidak terbaca server."
-                    log_messages.append(f"❌ Gagal: {filename}\n   (Error: {error_msg})")
+                        error_msg = "Format corrupt."
+                    table_data[i][3] = f"❌ Gagal ({error_msg[:15]}...)"
             except Exception as e:
-                log_messages.append(f"❌ Error Sistem: {str(e)}")
+                table_data[i][3] = "❌ Error Sistem"
 
-    log_messages.append("📦 Semua proses selesai! File ZIP siap diunduh.")
-    return zip_path, "\n".join(log_messages)
+            # Refresh tabel setelah 1 file selesai
+            yield None, table_data
+
+    # Proses selesai, kirimkan file ZIP dan tabel final
+    yield zip_path, table_data
 
 
 # ==========================================
-# TAMPILAN UI: WHITE MODERN & RESPONSIVE
+# TAMPILAN UI
 # ==========================================
-
-# CSS Super Minimalis (Hanya untuk mengunci tinggi kotak agar tidak memanjang)
 custom_css = """
-.gradio-container { max-width: 1000px !important; margin: auto; padding: 20px; }
+.gradio-container { max-width: 1050px !important; margin: auto; padding: 20px; }
 .file-upload-box { max-height: 280px !important; overflow-y: auto !important; }
-.log-box textarea { font-family: monospace; font-size: 13px; }
-.wa-link {
-    display: inline-block; padding: 10px 20px; background-color: #25D366; 
-    color: white !important; text-decoration: none; border-radius: 6px; 
-    font-weight: bold; font-size: 14px; margin-top: 10px; transition: 0.2s;
-}
+.wa-link { display: inline-block; padding: 10px 20px; background-color: #25D366; color: white !important; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 14px; margin-top: 10px; transition: 0.2s; }
 .wa-link:hover { background-color: #1DA851; transform: translateY(-2px); }
+/* Desain Tabel */
+.table-wrap { max-height: 350px !important; overflow-y: auto !important; }
 """
 
-# Menggunakan tema bawaan Gradio "Soft" yang modern, bersih, dan terang
-theme = gr.themes.Soft(
-    primary_hue="blue", 
-    neutral_hue="slate"
-)
+theme = gr.themes.Soft(primary_hue="blue", neutral_hue="slate")
 
 with gr.Blocks(theme=theme, css=custom_css) as app:
     
-    # KOP ATAS (Rapi & Di Tengah)
     gr.HTML('''
         <div style="text-align: center; margin-bottom: 30px; padding-bottom: 10px; border-bottom: 1px solid #eaeaea;">
             <h1 style="color: #1e293b; font-weight: 800; font-size: 28px; margin-bottom: 5px;">
                 ⚡ EPS TO SVG CONVERTER
             </h1>
             <span style="background-color: #e2e8f0; color: #475569; padding: 3px 10px; border-radius: 15px; font-size: 12px; font-weight: bold;">
-                V 1.2.0
+                V 1.3.0
             </span>
             <p style="color: #64748b; font-size: 14px; margin-top: 10px;">
                 Batch Converter Berbasis Cloud - Cepat, Gratis, & Otomatis ZIP
@@ -161,50 +180,30 @@ with gr.Blocks(theme=theme, css=custom_css) as app:
         </div>
     ''')
 
-    # LAYOUT RESPONSIVE: Menggunakan min_width agar turun ke bawah saat di layar HP
     with gr.Row():
-        
-        # --- KOLOM 1: INPUT & SETTING ---
         with gr.Column(scale=1, min_width=320):
             gr.Markdown("### ⚙️ Pengaturan & Input")
-            
             with gr.Row():
-                mode_input = gr.Dropdown(
-                    choices=["EPS ke SVG", "SVG ke EPS", "SVG ke SVG (Upscale)"], 
-                    value="EPS ke SVG", 
-                    label="Mode Konversi"
-                )
-                upscale_input = gr.Dropdown(
-                    choices=["1x (Original)", "2x", "4x", "5x", "6x", "7x", "8x"], 
-                    value="4x", 
-                    label="Upscale Vektor"
-                )
+                mode_input = gr.Dropdown(choices=["EPS ke SVG", "SVG ke EPS", "SVG ke SVG (Upscale)"], value="EPS ke SVG", label="Mode Konversi")
+                upscale_input = gr.Dropdown(choices=["1x (Original)", "2x", "4x", "5x", "6x", "7x", "8x"], value="4x", label="Upscale Vektor")
             
-            # Kotak Upload File (dibatasi tingginya oleh CSS agar tidak merusak layout)
-            file_input = gr.File(
-                label="Tarik & Lepas File Di Sini", 
-                file_count="multiple", 
-                elem_classes="file-upload-box"
-            )
-            
-            # Tombol warna biru modern bawaan tema "Soft" (Primary)
+            file_input = gr.File(label="Tarik & Lepas File Di Sini", file_count="multiple", elem_classes="file-upload-box")
             btn_convert = gr.Button("🚀 MULAI KONVERSI SEKARANG", variant="primary", size="lg")
 
-        # --- KOLOM 2: OUTPUT & MONITOR ---
         with gr.Column(scale=1, min_width=320):
             gr.Markdown("### 📥 Hasil & Monitor")
-            
             file_output = gr.File(label="Download File ZIP Di Sini", file_count="single")
             
-            log_output = gr.Textbox(
-                label="Status Antrean (Live Log)", 
-                lines=10, 
-                interactive=False, 
-                placeholder="Siap memproses. Silakan tambahkan file dan klik tombol konversi...",
-                elem_classes="log-box"
+            # MENGGANTI TEXTBOX MENJADI DATAFRAME (TABEL)
+            log_output = gr.Dataframe(
+                headers=["No", "Nama File", "Size", "Keterangan"],
+                datatype=["number", "str", "str", "str"],
+                label="Status Antrean (Live Tabel)",
+                interactive=False,
+                wrap=True,
+                elem_classes="table-wrap"
             )
 
-    # KOP BAWAH (Sederhana & Bersih)
     gr.HTML('''
         <div style="text-align: center; margin-top: 50px; border-top: 1px solid #eaeaea; padding-top: 20px;">
             <p style="font-size: 13px; color: #64748b; margin-bottom: 5px;">
@@ -216,7 +215,6 @@ with gr.Blocks(theme=theme, css=custom_css) as app:
         </div>
     ''')
 
-    # TRIGGERS
     btn_convert.click(
         fn=convert_files, 
         inputs=[file_input, mode_input, upscale_input], 
