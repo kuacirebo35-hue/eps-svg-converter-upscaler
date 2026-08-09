@@ -86,7 +86,7 @@ def convert_files(files, mode, upscale_str):
                         scale_svg_math(out_path, scale_factor)
                     
                     zipf.write(out_path, arcname=out_filename)
-                    log_messages.append(f"✅ Sukses: {out_filename} (Masuk ZIP)")
+                    log_messages.append(f"✅ Sukses: {out_filename}")
                     os.remove(out_path)
                 else:
                     error_msg = result.stderr.strip()
@@ -99,58 +99,106 @@ def convert_files(files, mode, upscale_str):
     log_messages.append("📦 Semua proses selesai! File ZIP siap diunduh.")
     return zip_path, "\n".join(log_messages)
 
+# --- CSS KUSTOM UNTUK TAMPILAN DESKTOP & PEMBATASAN SCROLL ---
 custom_css = """
-.gradio-container { max-width: 1100px !important; margin: auto; }
-.submit-btn { background: linear-gradient(90deg, #D4AF37 0%, #B5952F 100%) !important; border: none !important; color: #121212 !important; font-weight: 800 !important; font-size: 16px !important; transition: all 0.3s ease-in-out !important; box-shadow: 0 4px 10px rgba(212, 175, 55, 0.3) !important; }
-.submit-btn:hover { transform: scale(1.02) !important; box-shadow: 0 6px 15px rgba(212, 175, 55, 0.5) !important; }
-.footer-box { text-align: center; margin-top: 40px; padding: 25px; border-top: 1px solid #ddd; border-radius: 10px; background-color: transparent; }
-.wa-btn { display: inline-block; padding: 12px 24px; background-color: #25D366; color: white !important; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 15px; transition: 0.3s; box-shadow: 0 4px 6px rgba(37, 211, 102, 0.3); margin-top: 12px; }
-.wa-btn:hover { background-color: #1DA851; transform: translateY(-2px); box-shadow: 0 6px 12px rgba(37, 211, 102, 0.4); }
+/* Memaksa background menjadi gelap gulita mirip aplikasi VS Code/Desktop */
+body, .gradio-container { background-color: #121212 !important; }
+
+/* Desain Sidebar agar terpisah dari layar utama */
+.sidebar { 
+    background-color: #1a1a1a !important; 
+    padding: 25px 20px !important; 
+    border-right: 1px solid #333 !important; 
+    border-radius: 10px;
+    height: 100%;
+}
+
+/* Judul Logo Emas */
+.gold-title h2 { color: #D4AF37 !important; font-weight: 900 !important; text-align: center; margin-bottom: 30px; letter-spacing: 1px;}
+
+/* Tombol Premium */
+.submit-btn { 
+    background: linear-gradient(90deg, #D4AF37 0%, #B5952F 100%) !important; 
+    border: none !important; 
+    color: #121212 !important; 
+    font-weight: 800 !important; 
+    font-size: 16px !important; 
+    height: 50px !important;
+    margin-top: 20px !important;
+    box-shadow: 0 4px 10px rgba(212, 175, 55, 0.2) !important;
+}
+.submit-btn:hover { transform: scale(1.02) !important; }
+
+/* BATASAN TINGGI DAFTAR FILE AGAR BISA DI-SCROLL */
+.file-preview { max-height: 250px !important; overflow-y: auto !important; }
+
+/* Mempercantik Scrollbar */
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: #1E1E1E; }
+::-webkit-scrollbar-thumb { background: #D4AF37; border-radius: 4px; }
+
+/* Desain Link WhatsApp */
+.wa-link { color: #25D366; text-decoration: none; font-weight: bold; font-size: 13px; display: block; text-align: center; margin-top: 20px;}
+.wa-link:hover { color: #1DA851; text-decoration: underline; }
 """
 
-with gr.Blocks(theme=gr.themes.Soft(primary_hue="amber"), css=custom_css) as app:
-    gr.HTML('''
-        <div style="text-align: center; margin-bottom: 30px; padding-top: 20px;">
-            <h1 style="color: #D4AF37; margin-bottom: 5px; font-weight: 900; font-size: 32px;">
-                ⚡ EPS TO SVG CONVERTER V1.1.0
-            </h1>
-            <p style="color: #888; font-size: 15px;">
-                Batch Converter Berbasis Cloud - Cepat, Gratis, & Stabil (Auto ZIP)
-            </p>
-        </div>
-    ''')
+# Memaksa Tema Gelap (Dark Mode) langsung dari dalam Python
+theme = gr.themes.Default(primary_hue="amber").set(
+    body_background_fill="#121212",
+    body_background_fill_dark="#121212",
+    block_background_fill="#1E1E1E",
+    block_background_fill_dark="#1E1E1E",
+    block_border_color="#333333",
+    block_border_color_dark="#333333",
+    background_fill_primary="#1E1E1E",
+    background_fill_primary_dark="#1E1E1E"
+)
 
-    with gr.Row():
-        with gr.Column(scale=1):
-            gr.Markdown("### ⚙️ Panel Pengaturan")
-            with gr.Group():
-                mode_input = gr.Radio(["EPS ke SVG", "SVG ke EPS"], label="Mode Konversi", value="EPS ke SVG")
-                upscale_input = gr.Dropdown(["1x (Original)", "2x", "4x", "5x", "6x", "7x", "8x"], label="Upscale Vektor", value="4x")
-            
-            gr.Markdown("### 📂 Upload File Mentah")
-            file_input = gr.File(label="Tarik & Lepas File (Bisa blok banyak file)", file_count="multiple")
-            btn_convert = gr.Button("🚀 MULAI KONVERSI SEKARANG", elem_classes=["submit-btn"])
-
-        with gr.Column(scale=2):
-            gr.Markdown("### 📥 Hasil Unduhan (Otomatis jadi 1 ZIP)")
-            file_output = gr.File(label="Download File ZIP Di Sini", file_count="single")
-            
-            gr.Markdown("### 🖥️ Monitor Proses")
-            log_output = gr.Textbox(label="Cek status antrean dan error di sini", lines=10, interactive=False)
+# Membuka interface dengan menyuntikkan Javascript untuk memaksa mode "dark" di browser
+with gr.Blocks(theme=theme, css=custom_css, js="""function() { document.body.classList.add('dark'); }""") as app:
     
-    gr.HTML('''
-        <div class="footer-box">
-            <p style="font-size: 14px; margin-bottom: 0px; color: #555;">
-                Developed by <span style="font-weight: bold; color: #333;">Muhammad Fairuz</span>
-            </p>
-            <p style="font-size: 13px; color: #888; margin-top: 2px;">
-                © 2026 Hak Cipta Dilindungi
-            </p>
-            <a href="https://chat.whatsapp.com/JsXK1fNRSFKE1bQfYlGimt" target="_blank" class="wa-btn">
-                <i class="fa fa-whatsapp"></i> 💬 Gabung Group WA FORUM STOCK AI
-            </a>
-        </div>
-    ''')
+    with gr.Row():
+        # ==========================================
+        # KOLOM KIRI (SIDEBAR - Lebar 25%)
+        # ==========================================
+        with gr.Column(scale=1, min_width=260, elem_classes="sidebar"):
+            gr.Markdown("## EPS TO SVG\n## CONVERTER", elem_classes="gold-title")
+            
+            gr.Markdown("**MODE KONVERSI**")
+            mode_input = gr.Dropdown(choices=["EPS ke SVG", "SVG ke EPS"], value="EPS ke SVG", show_label=False)
+            
+            gr.Markdown("**UPSCALE VEKTOR & ARTBOARD**")
+            upscale_input = gr.Dropdown(choices=["1x (Original)", "2x", "4x", "5x", "6x", "7x", "8x"], value="4x", show_label=False)
+            
+            btn_convert = gr.Button("⚡ MULAI KONVERSI", elem_classes=["submit-btn"])
+            
+            # Footer Sidebar
+            gr.HTML('''
+                <div style="margin-top: 50px; text-align: center; border-top: 1px solid #333; padding-top: 15px;">
+                    <p style="font-size: 12px; color: #888; margin-bottom: 5px;">Developer by <b>Muhammad Fairuz</b></p>
+                    <a href="https://chat.whatsapp.com/JsXK1fNRSFKE1bQfYlGimt" target="_blank" class="wa-link">
+                        🔗 Gabung Group WA FORUM STOCK AI
+                    </a>
+                </div>
+            ''')
+
+        # ==========================================
+        # KOLOM KANAN (MAIN AREA - Lebar 75%)
+        # ==========================================
+        with gr.Column(scale=3):
+            gr.Markdown("### Daftar Antrean Batch", elem_classes="gold-title")
+            
+            # Kotak Upload & Preview (Tingginya sudah dibatasi oleh CSS)
+            file_input = gr.File(label="Tarik & Lepas File Di Sini (Drop Area)", file_count="multiple", height=300)
+            
+            with gr.Row():
+                with gr.Column(scale=1):
+                    gr.Markdown("### Monitor Proses")
+                    log_output = gr.Textbox(show_label=False, lines=6, interactive=False, placeholder="Siap memproses. Silakan tambahkan file input.")
+                
+                with gr.Column(scale=1):
+                    gr.Markdown("### Hasil Konversi")
+                    file_output = gr.File(label="Download File ZIP Di Sini", file_count="single")
 
     btn_convert.click(
         fn=convert_files, 
