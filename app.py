@@ -65,7 +65,6 @@ def convert_files(files, mode, upscale_str):
         in_path = file_obj if isinstance(file_obj, str) else file_obj.name
         fname = os.path.basename(in_path)
         fsize = format_size(os.path.getsize(in_path))
-        # Format Kolom: [No, Nama File, Size, Keterangan]
         table_data.append([i + 1, fname, fsize, "⏳ Menunggu..."])
     
     # Munculkan tabel awal ke UI
@@ -79,10 +78,12 @@ def convert_files(files, mode, upscale_str):
             in_path = file_obj if isinstance(file_obj, str) else file_obj.name
             filename = os.path.basename(in_path)
             
-            # Update status jadi Memproses dan refresh tabel
             table_data[i][3] = "🔄 Memproses..."
             yield None, table_data
 
+            # ==========================================
+            # MODE 1: SVG ke SVG (Hanya Upscale)
+            # ==========================================
             if mode == "SVG ke SVG (Upscale)":
                 if not filename.lower().endswith('.svg'):
                     table_data[i][3] = "❌ Gagal (Bukan SVG)"
@@ -91,7 +92,6 @@ def convert_files(files, mode, upscale_str):
                 
                 out_filename = os.path.splitext(filename)[0] + f"_{scale_factor}x.svg"
                 out_path = os.path.join(os.path.dirname(in_path), out_filename)
-                
                 shutil.copy2(in_path, out_path)
                 
                 if scale_factor > 1:
@@ -100,11 +100,58 @@ def convert_files(files, mode, upscale_str):
                 zipf.write(out_path, arcname=out_filename)
                 table_data[i][3] = "✅ Sukses"
                 os.remove(out_path)
-                
-                # Refresh tabel setelah sukses
                 yield None, table_data
                 continue
 
+            # ==========================================
+            # MODE 2: EPS ke EPS (Hanya Upscale)
+            # ==========================================
+            if mode == "EPS ke EPS (Upscale)":
+                if not filename.lower().endswith('.eps'):
+                    table_data[i][3] = "❌ Gagal (Bukan EPS)"
+                    yield None, table_data
+                    continue
+                
+                out_filename = os.path.splitext(filename)[0] + f"_{scale_factor}x.eps"
+                out_path = os.path.join(os.path.dirname(in_path), out_filename)
+                
+                # Jika tidak diupscale, cukup copy saja
+                if scale_factor == 1:
+                    shutil.copy2(in_path, out_path)
+                    zipf.write(out_path, arcname=out_filename)
+                    table_data[i][3] = "✅ Sukses"
+                    os.remove(out_path)
+                    yield None, table_data
+                    continue
+                    
+                # Jika diupscale, harus melewati fase SVG sementara
+                temp_svg = in_path + ".temp.svg"
+                cmd1 = ["inkscape", in_path, "--export-type=svg", f"--export-filename={temp_svg}"]
+                
+                try:
+                    # Proses 1: EPS -> SVG
+                    subprocess.run(cmd1, capture_output=True, text=True, check=True)
+                    # Proses 2: Upscale SVG
+                    scale_svg_math(temp_svg, scale_factor)
+                    # Proses 3: SVG -> EPS
+                    cmd2 = ["inkscape", temp_svg, "--export-type=eps", f"--export-filename={out_path}"]
+                    subprocess.run(cmd2, capture_output=True, text=True, check=True)
+                    
+                    zipf.write(out_path, arcname=out_filename)
+                    table_data[i][3] = "✅ Sukses"
+                    os.remove(out_path)
+                except Exception as e:
+                    table_data[i][3] = "❌ Gagal Server"
+                finally:
+                    if os.path.exists(temp_svg):
+                        os.remove(temp_svg)
+                        
+                yield None, table_data
+                continue
+
+            # ==========================================
+            # MODE 3 & 4: EPS ke SVG atau SVG ke EPS
+            # ==========================================
             out_ext = ".svg" if mode == "EPS ke SVG" else ".eps"
             out_filename = os.path.splitext(filename)[0] + out_ext
             out_path = os.path.join(os.path.dirname(in_path), out_filename)
@@ -158,7 +205,6 @@ custom_css = """
 .file-upload-box { max-height: 280px !important; overflow-y: auto !important; }
 .wa-link { display: inline-block; padding: 10px 20px; background-color: #25D366; color: white !important; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 14px; margin-top: 10px; transition: 0.2s; }
 .wa-link:hover { background-color: #1DA851; transform: translateY(-2px); }
-/* Desain Tabel */
 .table-wrap { max-height: 350px !important; overflow-y: auto !important; }
 """
 
@@ -172,7 +218,7 @@ with gr.Blocks(theme=theme, css=custom_css) as app:
                 ⚡ EPS TO SVG CONVERTER
             </h1>
             <span style="background-color: #e2e8f0; color: #475569; padding: 3px 10px; border-radius: 15px; font-size: 12px; font-weight: bold;">
-                V 1.3.0
+                V 1.4.0
             </span>
             <p style="color: #64748b; font-size: 14px; margin-top: 10px;">
                 Batch Converter Berbasis Cloud - Cepat, Gratis, & Otomatis ZIP
@@ -184,8 +230,17 @@ with gr.Blocks(theme=theme, css=custom_css) as app:
         with gr.Column(scale=1, min_width=320):
             gr.Markdown("### ⚙️ Pengaturan & Input")
             with gr.Row():
-                mode_input = gr.Dropdown(choices=["EPS ke SVG", "SVG ke EPS", "SVG ke SVG (Upscale)"], value="EPS ke SVG", label="Mode Konversi")
-                upscale_input = gr.Dropdown(choices=["1x (Original)", "2x", "4x", "5x", "6x", "7x", "8x"], value="4x", label="Upscale Vektor")
+                # Opsi EPS ke EPS sudah ditambahkan di sini
+                mode_input = gr.Dropdown(
+                    choices=["EPS ke SVG", "SVG ke EPS", "SVG ke SVG (Upscale)", "EPS ke EPS (Upscale)"], 
+                    value="EPS ke SVG", 
+                    label="Mode Konversi"
+                )
+                upscale_input = gr.Dropdown(
+                    choices=["1x (Original)", "2x", "4x", "5x", "6x", "7x", "8x"], 
+                    value="4x", 
+                    label="Upscale Vektor"
+                )
             
             file_input = gr.File(label="Tarik & Lepas File Di Sini", file_count="multiple", elem_classes="file-upload-box")
             btn_convert = gr.Button("🚀 MULAI KONVERSI SEKARANG", variant="primary", size="lg")
@@ -194,7 +249,7 @@ with gr.Blocks(theme=theme, css=custom_css) as app:
             gr.Markdown("### 📥 Hasil & Monitor")
             file_output = gr.File(label="Download File ZIP Di Sini", file_count="single")
             
-            # MENGGANTI TEXTBOX MENJADI DATAFRAME (TABEL)
+            # Ini adalah Tabel yang akan menampilkan Nomor dan Status Sukses
             log_output = gr.Dataframe(
                 headers=["No", "Nama File", "Size", "Keterangan"],
                 datatype=["number", "str", "str", "str"],
