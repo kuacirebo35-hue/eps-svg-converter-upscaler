@@ -50,10 +50,10 @@ def scale_svg_math(svg_path, scale):
         print(f"Error scaling SVG: {e}")
         return False
 
-# FUNGSI UTAMA (Dengan Memori State & Generator)
+# FUNGSI UTAMA 
 def convert_files(files, mode, upscale_str, successful_files):
     if not files:
-        yield gr.update(value=None), [["-", "Tidak ada file yang dipilih", "-", "Error"]], gr.update(visible=False), gr.update(interactive=True), successful_files
+        yield gr.update(visible=False), gr.update(visible=True), [["-", "Tidak ada file yang dipilih", "-", "Error"]], gr.update(visible=False), gr.update(interactive=True), successful_files
         return
     
     scale_factor = 1
@@ -62,32 +62,29 @@ def convert_files(files, mode, upscale_str, successful_files):
 
     MAX_RETRIES = 3 
 
-    # 1. Menyiapkan Data Tabel Awal dengan mengecek memori
+    # 1. Menyiapkan Data Tabel Awal 
     table_data = []
     for i, file_obj in enumerate(files):
         in_path = file_obj if isinstance(file_obj, str) else file_obj.name
         fname = os.path.basename(in_path)
         fsize = format_size(os.path.getsize(in_path))
         
-        # Cek apakah file ini sudah sukses di klik sebelumnya
         if fname in successful_files:
-            status = "✅ Sudah Sukses (Dilewati)"
+            status = "✅ Sukses (Dilewati)"
         else:
             status = "⏳ Menunggu..."
             
         table_data.append([i + 1, fname, fsize, status])
     
-    # Update UI Awal: Sembunyikan ZIP, Munculkan Tabel, Munculkan Tombol Batal, Matikan Tombol Mulai
-    yield gr.update(value=None), table_data, gr.update(visible=True), gr.update(interactive=False), successful_files
+    # Update UI Awal: Sembunyikan Tombol Download, Munculkan Tabel & Stop
+    yield gr.update(visible=False), gr.update(visible=True, value="*⏳ Sedang memproses...*"), table_data, gr.update(visible=True), gr.update(interactive=False), successful_files
 
     zip_filename = "Hasil_Konversi_Batch.zip"
     zip_path = os.path.join(os.getcwd(), zip_filename)
     
-    # Jika memori sukses kosong (berarti ini batch baru), hapus ZIP lama jika ada
     if not successful_files and os.path.exists(zip_path):
         os.remove(zip_path)
         
-    # Gunakan mode 'a' (append/tambah) agar file lama di ZIP tidak hilang jika di-resume
     mode_zip = 'a' if os.path.exists(zip_path) else 'w'
     
     with zipfile.ZipFile(zip_path, mode_zip, zipfile.ZIP_DEFLATED) as zipf:
@@ -95,17 +92,16 @@ def convert_files(files, mode, upscale_str, successful_files):
             in_path = file_obj if isinstance(file_obj, str) else file_obj.name
             filename = os.path.basename(in_path)
             
-            # Jika file sudah ada di memori sukses, lompati (skip) prosesnya!
             if filename in successful_files:
                 continue
             
             table_data[i][3] = "🔄 Memproses..."
-            yield gr.update(), table_data, gr.update(), gr.update(), successful_files
+            yield gr.update(), gr.update(), table_data, gr.update(), gr.update(), successful_files
 
             if mode == "SVG ke SVG (Upscale)":
                 if not filename.lower().endswith('.svg'):
                     table_data[i][3] = "❌ Gagal (Bukan SVG)"
-                    yield gr.update(), table_data, gr.update(), gr.update(), successful_files
+                    yield gr.update(), gr.update(), table_data, gr.update(), gr.update(), successful_files
                     continue
                 
                 out_filename = os.path.splitext(filename)[0] + f"_{scale_factor}x.svg"
@@ -117,18 +113,18 @@ def convert_files(files, mode, upscale_str, successful_files):
                         scale_svg_math(out_path, scale_factor)
                     zipf.write(out_path, arcname=out_filename)
                     table_data[i][3] = "✅ Sukses"
-                    successful_files.append(filename) # Simpan ke memori sukses!
+                    successful_files.append(filename)
                     os.remove(out_path)
                 except Exception:
                     table_data[i][3] = "❌ Gagal Eksekusi"
                 
-                yield gr.update(), table_data, gr.update(), gr.update(), successful_files
+                yield gr.update(), gr.update(), table_data, gr.update(), gr.update(), successful_files
                 continue
 
             if mode == "EPS ke EPS (Upscale)":
                 if not filename.lower().endswith('.eps'):
                     table_data[i][3] = "❌ Gagal (Bukan EPS)"
-                    yield gr.update(), table_data, gr.update(), gr.update(), successful_files
+                    yield gr.update(), gr.update(), table_data, gr.update(), gr.update(), successful_files
                     continue
                 
                 out_filename = os.path.splitext(filename)[0] + f"_{scale_factor}x.eps"
@@ -138,14 +134,14 @@ def convert_files(files, mode, upscale_str, successful_files):
                     shutil.copy2(in_path, out_path)
                     zipf.write(out_path, arcname=out_filename)
                     table_data[i][3] = "✅ Sukses"
-                    successful_files.append(filename) # Simpan ke memori sukses!
+                    successful_files.append(filename)
                     os.remove(out_path)
-                    yield gr.update(), table_data, gr.update(), gr.update(), successful_files
+                    yield gr.update(), gr.update(), table_data, gr.update(), gr.update(), successful_files
                     continue
                 
                 for attempt in range(1, MAX_RETRIES + 1):
                     table_data[i][3] = f"🔄 Memproses (Coba {attempt}/3)..."
-                    yield gr.update(), table_data, gr.update(), gr.update(), successful_files
+                    yield gr.update(), gr.update(), table_data, gr.update(), gr.update(), successful_files
                     
                     temp_svg = in_path + ".temp.svg"
                     cmd1 = ["inkscape", in_path, "--export-type=svg", f"--export-filename={temp_svg}"]
@@ -158,7 +154,7 @@ def convert_files(files, mode, upscale_str, successful_files):
                         
                         zipf.write(out_path, arcname=out_filename)
                         table_data[i][3] = "✅ Sukses"
-                        successful_files.append(filename) # Simpan ke memori sukses!
+                        successful_files.append(filename)
                         os.remove(out_path)
                         if os.path.exists(temp_svg): os.remove(temp_svg)
                         break
@@ -169,7 +165,7 @@ def convert_files(files, mode, upscale_str, successful_files):
                         else:
                             time.sleep(1)
                             
-                yield gr.update(), table_data, gr.update(), gr.update(), successful_files
+                yield gr.update(), gr.update(), table_data, gr.update(), gr.update(), successful_files
                 continue
 
             out_ext = ".svg" if mode == "EPS ke SVG" else ".eps"
@@ -178,7 +174,7 @@ def convert_files(files, mode, upscale_str, successful_files):
             
             for attempt in range(1, MAX_RETRIES + 1):
                 table_data[i][3] = f"🔄 Memproses (Coba {attempt}/3)..."
-                yield gr.update(), table_data, gr.update(), gr.update(), successful_files
+                yield gr.update(), gr.update(), table_data, gr.update(), gr.update(), successful_files
                 
                 target_in_path = in_path
                 temp_svg = None
@@ -206,7 +202,7 @@ def convert_files(files, mode, upscale_str, successful_files):
                         
                         zipf.write(out_path, arcname=out_filename)
                         table_data[i][3] = "✅ Sukses"
-                        successful_files.append(filename) # Simpan ke memori sukses!
+                        successful_files.append(filename)
                         os.remove(out_path)
                         break
                     else:
@@ -222,14 +218,27 @@ def convert_files(files, mode, upscale_str, successful_files):
                     else:
                         time.sleep(1)
 
-            yield gr.update(), table_data, gr.update(), gr.update(), successful_files
+            yield gr.update(), gr.update(), table_data, gr.update(), gr.update(), successful_files
 
-    # Proses Selesai Semua: Munculkan ZIP, Sembunyikan tombol Batal, Aktifkan tombol Mulai
-    yield zip_path, table_data, gr.update(visible=False), gr.update(interactive=True), successful_files
+    # Proses Selesai Semua: Munculkan Tombol Download, Sembunyikan Tulisan & Tombol Batal
+    yield gr.update(value=zip_path, visible=True), gr.update(visible=False), table_data, gr.update(visible=False), gr.update(interactive=True), successful_files
 
+# FUNGSI PENCEGAT (INTERCEPTOR) SAAT TOMBOL BATAL DITEKAN
+def batalkan_proses(current_table):
+    new_table = []
+    if current_table:
+        for row in current_table:
+            row_list = list(row) # Ubah baris jadi list agar bisa diedit
+            # Jika statusnya masih Memproses atau Menunggu, ubah jadi Dibatalkan
+            if "Memproses" in str(row_list[3]) or "Menunggu" in str(row_list[3]):
+                row_list[3] = "🛑 Dibatalkan"
+            new_table.append(row_list)
+            
+    # Kembalikan tabel yang sudah diedit ke layar
+    return gr.update(visible=False), gr.update(interactive=True), new_table
 
 # ==========================================
-# TAMPILAN UI - PENYEMPURNAAN LAYOUT
+# TAMPILAN UI
 # ==========================================
 custom_css = """
 .gradio-container { max-width: 1050px !important; margin: auto; padding: 20px; }
@@ -237,29 +246,29 @@ custom_css = """
 .wa-link { display: inline-block; padding: 10px 20px; background-color: #25D366; color: white !important; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 14px; margin-top: 10px; transition: 0.2s; }
 .wa-link:hover { background-color: #1DA851; transform: translateY(-2px); }
 .table-wrap { max-height: 350px !important; overflow-y: auto !important; width: 100% !important; }
-.zip-download-box { height: 85px !important; min-height: 85px !important; overflow: hidden !important; }
-.zip-download-box > div { min-height: 85px !important; height: 85px !important; }
 
 /* Desain tombol stop merah */
 .btn-stop { background: #ef4444 !important; border: none !important; color: white !important; font-weight: bold; }
 .btn-stop:hover { background: #dc2626 !important; transform: scale(1.01); }
+
+/* Desain tombol download hijau mantap */
+.btn-download { background: #10b981 !important; border: none !important; color: white !important; font-size: 18px !important; font-weight: 800 !important; height: 75px !important; box-shadow: 0 4px 6px rgba(16, 185, 129, 0.3) !important; border-radius: 12px !important; }
+.btn-download:hover { background: #059669 !important; transform: translateY(-2px); }
 """
 
 theme = gr.themes.Soft(primary_hue="blue", neutral_hue="slate")
 
 with gr.Blocks(theme=theme, css=custom_css) as app:
     
-    # MEMORI APLIKASI (Untuk mencatat file yang sudah sukses agar bisa dilewati saat di-resume)
     state_success = gr.State(value=[])
     
-    # HEADER
     gr.HTML('''
         <div style="text-align: center; margin-bottom: 25px; padding-bottom: 10px; border-bottom: 1px solid #eaeaea;">
             <h1 style="color: #1e293b; font-weight: 800; font-size: 28px; margin-bottom: 5px;">
                 ⚡ EPS TO SVG CONVERTER
             </h1>
             <span style="background-color: #e2e8f0; color: #475569; padding: 3px 10px; border-radius: 15px; font-size: 12px; font-weight: bold;">
-                V 1.6.0
+                V 1.7.0
             </span>
             <p style="color: #64748b; font-size: 14px; margin-top: 10px;">
                 Batch Converter Berbasis Cloud - Cepat, Gratis, & Otomatis ZIP
@@ -267,7 +276,6 @@ with gr.Blocks(theme=theme, css=custom_css) as app:
         </div>
     ''')
 
-    # PANEL ATAS
     with gr.Row():
         with gr.Column(scale=1, min_width=300):
             gr.Markdown("### ⚙️ Pengaturan Input")
@@ -283,15 +291,17 @@ with gr.Blocks(theme=theme, css=custom_css) as app:
                 
         with gr.Column(scale=1, min_width=300):
             gr.Markdown("### 📥 Hasil Monitor")
-            file_output = gr.File(label="Download File ZIP Di Sini", file_count="single", elem_classes="zip-download-box")
+            # Pesan helper yang akan hilang saat selesai
+            ui_msg = gr.Markdown("*Proses belum dimulai. Tombol download ZIP akan muncul di sini saat selesai.*")
+            
+            # TOMBOL DOWNLOAD ZIP EKSKLUSIF (Muncul saat proses beres 100%)
+            btn_download = gr.DownloadButton("📥 DOWNLOAD FILE ZIP", visible=False, elem_classes="btn-download")
 
-    # AREA UPLOAD
     gr.Markdown("### 📂 Tarik & Lepas File Di Sini")
     file_input = gr.File(label="Upload Banyak File Sekaligus", file_count="multiple", elem_classes="file-upload-box")
     
     btn_convert = gr.Button("🚀 MULAI KONVERSI SEKARANG", variant="primary", size="lg")
 
-    # TABEL LIVE LOG
     gr.Markdown("### 🖥️ Status Antrean (Live Tabel)")
     log_output = gr.Dataframe(
         headers=["No", "Nama File", "Size", "Keterangan"],
@@ -300,10 +310,8 @@ with gr.Blocks(theme=theme, css=custom_css) as app:
         interactive=False, wrap=True, elem_classes="table-wrap"
     )
 
-    # TOMBOL STOP (Disembunyikan secara default)
     btn_stop = gr.Button("🛑 BATALKAN PROSES", elem_classes="btn-stop", size="lg", visible=False)
 
-    # FOOTER
     gr.HTML('''
         <div style="text-align: center; margin-top: 50px; border-top: 1px solid #eaeaea; padding-top: 20px;">
             <p style="font-size: 13px; color: #64748b; margin-bottom: 5px;">
@@ -315,27 +323,20 @@ with gr.Blocks(theme=theme, css=custom_css) as app:
         </div>
     ''')
 
-    # ==========================================
-    # LOGIKA PENGENDALIAN TOMBOL & EVENT
-    # ==========================================
-    
-    # 1. Jika user mengganti/menghapus file di area drop, reset ulang memorinya agar dianggap kloter baru
-    file_input.change(fn=lambda: [], inputs=None, outputs=[state_success])
+    # EVENT TRIGGERS
+    file_input.change(fn=lambda: ([], gr.update(visible=False), gr.update(visible=True, value="*Proses belum dimulai. Tombol download ZIP akan muncul di sini saat selesai.*")), inputs=None, outputs=[state_success, btn_download, ui_msg])
 
-    # 2. Menjalankan proses konversi
     konversi_event = btn_convert.click(
         fn=convert_files, 
         inputs=[file_input, mode_input, upscale_input, state_success], 
-        outputs=[file_output, log_output, btn_stop, btn_convert, state_success]
+        outputs=[btn_download, ui_msg, log_output, btn_stop, btn_convert, state_success]
     )
     
-    # 3. Mengaitkan tombol Batal. 
-    # cancels=[konversi_event] akan menghentikan paksa mesin server.
-    # lambda:... akan menyembunyikan kembali tombol batal dan mengaktifkan tombol mulai.
+    # Fungsi intersep saat Batal ditekan, update status jadi Dibatalkan!
     btn_stop.click(
-        fn=lambda: (gr.update(visible=False), gr.update(interactive=True)), 
-        inputs=None, 
-        outputs=[btn_stop, btn_convert], 
+        fn=batalkan_proses, 
+        inputs=[log_output], 
+        outputs=[btn_stop, btn_convert, log_output], 
         cancels=[konversi_event]
     )
 
