@@ -4,7 +4,7 @@ import xml.etree.ElementTree as ET
 import os
 import shutil
 import re
-import zipfile # Modul baru untuk membuat file ZIP
+import zipfile
 
 def scale_svg_math(svg_path, scale):
     try:
@@ -49,12 +49,9 @@ def convert_files(files, mode, upscale_str):
         scale_factor = int(upscale_str.replace("x", ""))
 
     log_messages = []
-    
-    # 1. Menyiapkan File ZIP penampung
     zip_filename = "Hasil_Konversi_Batch.zip"
     zip_path = os.path.join(os.getcwd(), zip_filename)
     
-    # Buka ZIP dalam mode 'write'
     with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
         for file_obj in files:
             in_path = file_obj if isinstance(file_obj, str) else file_obj.name
@@ -81,8 +78,6 @@ def convert_files(files, mode, upscale_str):
 
             try:
                 result = subprocess.run(cmd, capture_output=True, text=True)
-                
-                # AUTO-DELETE 1: Hapus file temporary SVG jika ada
                 if temp_svg and os.path.exists(temp_svg):
                     os.remove(temp_svg)
                 
@@ -90,11 +85,8 @@ def convert_files(files, mode, upscale_str):
                     if mode == "EPS ke SVG" and scale_factor > 1:
                         scale_svg_math(out_path, scale_factor)
                     
-                    # Masukkan file yang sudah jadi ke dalam ZIP
                     zipf.write(out_path, arcname=out_filename)
                     log_messages.append(f"✅ Sukses: {out_filename} (Masuk ZIP)")
-                    
-                    # AUTO-DELETE 2: Langsung hapus file hasil dari server karena sudah aman di dalam ZIP
                     os.remove(out_path)
                 else:
                     error_msg = result.stderr.strip()
@@ -105,11 +97,8 @@ def convert_files(files, mode, upscale_str):
                 log_messages.append(f"❌ Error Sistem: {str(e)}")
 
     log_messages.append("📦 Semua proses selesai! File ZIP siap diunduh.")
-    
-    # Kembalikan 1 file ZIP saja
     return zip_path, "\n".join(log_messages)
 
-# --- INJEKSI CSS KUSTOM ---
 custom_css = """
 .gradio-container { max-width: 1100px !important; margin: auto; }
 .submit-btn { background: linear-gradient(90deg, #D4AF37 0%, #B5952F 100%) !important; border: none !important; color: #121212 !important; font-weight: 800 !important; font-size: 16px !important; transition: all 0.3s ease-in-out !important; box-shadow: 0 4px 10px rgba(212, 175, 55, 0.3) !important; }
@@ -123,7 +112,7 @@ with gr.Blocks(theme=gr.themes.Soft(primary_hue="amber"), css=custom_css) as app
     gr.HTML('''
         <div style="text-align: center; margin-bottom: 30px; padding-top: 20px;">
             <h1 style="color: #D4AF37; margin-bottom: 5px; font-weight: 900; font-size: 32px;">
-                ⚡ EPS TO SVG CONVERTER PRO
+                ⚡ EPS TO SVG CONVERTER V1.1.0
             </h1>
             <p style="color: #888; font-size: 15px;">
                 Batch Converter Berbasis Cloud - Cepat, Gratis, & Stabil (Auto ZIP)
@@ -144,7 +133,6 @@ with gr.Blocks(theme=gr.themes.Soft(primary_hue="amber"), css=custom_css) as app
 
         with gr.Column(scale=2):
             gr.Markdown("### 📥 Hasil Unduhan (Otomatis jadi 1 ZIP)")
-            # Mengubah hasil output menjadi satu file ZIP tunggal
             file_output = gr.File(label="Download File ZIP Di Sini", file_count="single")
             
             gr.Markdown("### 🖥️ Monitor Proses")
@@ -156,7 +144,7 @@ with gr.Blocks(theme=gr.themes.Soft(primary_hue="amber"), css=custom_css) as app
                 Developed by <span style="font-weight: bold; color: #333;">Muhammad Fairuz</span>
             </p>
             <p style="font-size: 13px; color: #888; margin-top: 2px;">
-                © 2024 Hak Cipta Dilindungi
+                © 2026 Hak Cipta Dilindungi
             </p>
             <a href="https://chat.whatsapp.com/JsXK1fNRSFKE1bQfYlGimt" target="_blank" class="wa-btn">
                 <i class="fa fa-whatsapp"></i> 💬 Gabung Group WA FORUM STOCK AI
