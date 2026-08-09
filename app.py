@@ -58,6 +58,31 @@ def convert_files(files, mode, upscale_str):
             filename = os.path.basename(in_path)
             log_messages.append(f"⏳ Memproses: {filename}...")
 
+            # ==========================================
+            # FITUR BARU: SVG ke SVG (Hanya Upscale)
+            # ==========================================
+            if mode == "SVG ke SVG (Upscale)":
+                if not filename.lower().endswith('.svg'):
+                    log_messages.append(f"❌ Gagal: {filename} (Bukan file SVG!)")
+                    continue
+                
+                # Menambahkan embel-embel "_4x" di nama file agar jelas
+                out_filename = os.path.splitext(filename)[0] + f"_{scale_factor}x.svg"
+                out_path = os.path.join(os.path.dirname(in_path), out_filename)
+                
+                shutil.copy2(in_path, out_path)
+                
+                if scale_factor > 1:
+                    scale_svg_math(out_path, scale_factor)
+                
+                zipf.write(out_path, arcname=out_filename)
+                log_messages.append(f"✅ Sukses: {out_filename}")
+                os.remove(out_path)
+                continue # Lanjut ke file berikutnya (Lewati proses Inkscape)
+
+            # ==========================================
+            # FITUR LAMA: Konversi menggunakan Inkscape
+            # ==========================================
             out_ext = ".svg" if mode == "EPS ke SVG" else ".eps"
             out_filename = os.path.splitext(filename)[0] + out_ext
             out_path = os.path.join(os.path.dirname(in_path), out_filename)
@@ -101,10 +126,8 @@ def convert_files(files, mode, upscale_str):
 
 # --- CSS KUSTOM UNTUK TAMPILAN DESKTOP & PEMBATASAN SCROLL ---
 custom_css = """
-/* Memaksa background menjadi gelap gulita mirip aplikasi VS Code/Desktop */
 body, .gradio-container { background-color: #121212 !important; }
 
-/* Desain Sidebar agar terpisah dari layar utama */
 .sidebar { 
     background-color: #1a1a1a !important; 
     padding: 25px 20px !important; 
@@ -113,10 +136,9 @@ body, .gradio-container { background-color: #121212 !important; }
     height: 100%;
 }
 
-/* Judul Logo Emas */
-.gold-title h2 { color: #D4AF37 !important; font-weight: 900 !important; text-align: center; margin-bottom: 30px; letter-spacing: 1px;}
+.gold-title h2 { color: #D4AF37 !important; font-weight: 900 !important; text-align: center; margin-bottom: 5px; letter-spacing: 1px;}
+.version-badge { color: #888; text-align: center; font-size: 13px; font-weight: bold; margin-bottom: 30px; display: block; }
 
-/* Tombol Premium */
 .submit-btn { 
     background: linear-gradient(90deg, #D4AF37 0%, #B5952F 100%) !important; 
     border: none !important; 
@@ -129,20 +151,16 @@ body, .gradio-container { background-color: #121212 !important; }
 }
 .submit-btn:hover { transform: scale(1.02) !important; }
 
-/* BATASAN TINGGI DAFTAR FILE AGAR BISA DI-SCROLL */
 .file-preview { max-height: 250px !important; overflow-y: auto !important; }
 
-/* Mempercantik Scrollbar */
 ::-webkit-scrollbar { width: 8px; }
 ::-webkit-scrollbar-track { background: #1E1E1E; }
 ::-webkit-scrollbar-thumb { background: #D4AF37; border-radius: 4px; }
 
-/* Desain Link WhatsApp */
 .wa-link { color: #25D366; text-decoration: none; font-weight: bold; font-size: 13px; display: block; text-align: center; margin-top: 20px;}
 .wa-link:hover { color: #1DA851; text-decoration: underline; }
 """
 
-# Memaksa Tema Gelap (Dark Mode) langsung dari dalam Python
 theme = gr.themes.Default(primary_hue="amber").set(
     body_background_fill="#121212",
     body_background_fill_dark="#121212",
@@ -154,25 +172,23 @@ theme = gr.themes.Default(primary_hue="amber").set(
     background_fill_primary_dark="#1E1E1E"
 )
 
-# Membuka interface dengan menyuntikkan Javascript untuk memaksa mode "dark" di browser
 with gr.Blocks(theme=theme, css=custom_css, js="""function() { document.body.classList.add('dark'); }""") as app:
     
     with gr.Row():
-        # ==========================================
-        # KOLOM KIRI (SIDEBAR - Lebar 25%)
-        # ==========================================
         with gr.Column(scale=1, min_width=260, elem_classes="sidebar"):
+            # Update Judul dan Versi
             gr.Markdown("## EPS TO SVG\n## CONVERTER", elem_classes="gold-title")
+            gr.HTML('<span class="version-badge">V 1.2.0</span>')
             
             gr.Markdown("**MODE KONVERSI**")
-            mode_input = gr.Dropdown(choices=["EPS ke SVG", "SVG ke EPS"], value="EPS ke SVG", show_label=False)
+            # Menambah opsi baru di dropdown
+            mode_input = gr.Dropdown(choices=["EPS ke SVG", "SVG ke EPS", "SVG ke SVG (Upscale)"], value="EPS ke SVG", show_label=False)
             
             gr.Markdown("**UPSCALE VEKTOR & ARTBOARD**")
             upscale_input = gr.Dropdown(choices=["1x (Original)", "2x", "4x", "5x", "6x", "7x", "8x"], value="4x", show_label=False)
             
             btn_convert = gr.Button("⚡ MULAI KONVERSI", elem_classes=["submit-btn"])
             
-            # Footer Sidebar
             gr.HTML('''
                 <div style="margin-top: 50px; text-align: center; border-top: 1px solid #333; padding-top: 15px;">
                     <p style="font-size: 12px; color: #888; margin-bottom: 5px;">Developer by <b>Muhammad Fairuz</b></p>
@@ -182,13 +198,9 @@ with gr.Blocks(theme=theme, css=custom_css, js="""function() { document.body.cla
                 </div>
             ''')
 
-        # ==========================================
-        # KOLOM KANAN (MAIN AREA - Lebar 75%)
-        # ==========================================
         with gr.Column(scale=3):
             gr.Markdown("### Daftar Antrean Batch", elem_classes="gold-title")
             
-            # Kotak Upload & Preview (Tingginya sudah dibatasi oleh CSS)
             file_input = gr.File(label="Tarik & Lepas File Di Sini (Drop Area)", file_count="multiple", height=300)
             
             with gr.Row():
