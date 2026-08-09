@@ -181,7 +181,7 @@ def convert_files(files, mode, upscale_str):
 
 
 # ==========================================
-# TAMPILAN UI - LAYOUT BARU BERSUSUN
+# TAMPILAN UI - PENYEMPURNAAN LAYOUT
 # ==========================================
 custom_css = """
 .gradio-container { max-width: 1050px !important; margin: auto; padding: 20px; }
@@ -189,6 +189,10 @@ custom_css = """
 .wa-link { display: inline-block; padding: 10px 20px; background-color: #25D366; color: white !important; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 14px; margin-top: 10px; transition: 0.2s; }
 .wa-link:hover { background-color: #1DA851; transform: translateY(-2px); }
 .table-wrap { max-height: 350px !important; overflow-y: auto !important; width: 100% !important; }
+
+/* Injeksi CSS Khusus untuk Menyusutkan Kotak Download ZIP agar sejajar dengan Dropdown */
+.zip-download-box { height: 85px !important; min-height: 85px !important; overflow: hidden !important; }
+.zip-download-box > div { min-height: 85px !important; height: 85px !important; }
 """
 
 theme = gr.themes.Soft(primary_hue="blue", neutral_hue="slate")
@@ -228,16 +232,21 @@ with gr.Blocks(theme=theme, css=custom_css) as app:
                 
         with gr.Column(scale=1, min_width=300):
             gr.Markdown("### 📥 Hasil Monitor")
-            file_output = gr.File(label="Download File ZIP Di Sini", file_count="single")
+            # Menambahkan elem_classes="zip-download-box" agar tingginya disunat oleh CSS kita!
+            file_output = gr.File(
+                label="Download File ZIP Di Sini", 
+                file_count="single",
+                elem_classes="zip-download-box"
+            )
 
-    # 3. AREA UPLOAD FILE (Melebar Penuh)
+    # 3. AREA UPLOAD FILE
     gr.Markdown("### 📂 Tarik & Lepas File Di Sini")
     file_input = gr.File(label="Upload Banyak File Sekaligus", file_count="multiple", elem_classes="file-upload-box")
     
-    # 4. TOMBOL KONVERSI (Melebar Penuh)
+    # 4. TOMBOL KONVERSI
     btn_convert = gr.Button("🚀 MULAI KONVERSI SEKARANG", variant="primary", size="lg")
 
-    # 5. AREA TABEL LIVE LOG (Melebar Penuh di Bawah)
+    # 5. AREA TABEL LIVE LOG
     gr.Markdown("### 🖥️ Status Antrean (Live Tabel)")
     log_output = gr.Dataframe(
         headers=["No", "Nama File", "Size", "Keterangan"],
