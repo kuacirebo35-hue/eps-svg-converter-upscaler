@@ -46,18 +46,22 @@ def scale_svg_math(svg_path, scale):
 
 def convert_files(files, mode, upscale_str):
     if not files:
-        return []
+        return [], "Tidak ada file yang dipilih."
     
     scale_factor = 1
     if upscale_str != "1x (Original)":
         scale_factor = int(upscale_str.replace("x", ""))
 
     hasil_konversi = []
+    log_messages = []
 
     for file_obj in files:
-        in_path = file_obj.name
+        # PERBAIKAN 1: Aman untuk semua versi Gradio terbaru
+        in_path = file_obj if isinstance(file_obj, str) else file_obj.name
         filename = os.path.basename(in_path)
         
+        log_messages.append(f"⏳ Memproses: {filename}...")
+
         out_ext = ".svg" if mode == "EPS ke SVG" else ".eps"
         out_filename = os.path.splitext(filename)[0] + out_ext
         out_path = os.path.join(os.path.dirname(in_path), out_filename)
@@ -79,20 +83,29 @@ def convert_files(files, mode, upscale_str):
         ]
 
         try:
-            subprocess.run(cmd, check=True, capture_output=True, text=True)
+            # PERBAIKAN 2: Tidak mudah crash jika ada peringatan kecil dari server
+            result = subprocess.run(cmd, capture_output=True, text=True)
             
             if temp_svg and os.path.exists(temp_svg):
                 os.remove(temp_svg)
 
+            # PERBAIKAN 3: Mengecek apakah file sukses dibuat
             if os.path.exists(out_path):
                 if mode == "EPS ke SVG" and scale_factor > 1:
                     scale_svg_math(out_path, scale_factor)
                 hasil_konversi.append(out_path)
+                log_messages.append(f"✅ Sukses: {out_filename}")
+            else:
+                # Jika gagal, ambil pesan error asli dari mesin untuk dipelajari
+                error_msg = result.stderr.strip()
+                if not error_msg:
+                    error_msg = "File Corrupt atau Format tidak terbaca server."
+                log_messages.append(f"❌ Gagal: {filename}\n   (Alasan Server: {error_msg})")
                 
         except Exception as e:
-            print(f"Gagal: {e}")
+            log_messages.append(f"❌ Error Sistem: {str(e)}")
 
-    return hasil_konversi
+    return hasil_konversi, "\n".join(log_messages)
 
 with gr.Blocks(theme=gr.themes.Monochrome()) as app:
     gr.Markdown("# ⚡ EPS TO SVG CONVERTER BATCH")
@@ -107,14 +120,15 @@ with gr.Blocks(theme=gr.themes.Monochrome()) as app:
 
         with gr.Column():
             file_output = gr.File(label="Hasil File Siap Download", file_count="multiple")
+            # --- TAMBAHAN BARU: MONITOR LOG ---
+            log_output = gr.Textbox(label="Monitor Log (Cek progres/error di sini)", lines=6, interactive=False)
             gr.Markdown("**Catatan:** File akan otomatis terhapus dari server saat Anda menutup halaman web ini.")
 
     btn_convert.click(
         fn=convert_files, 
         inputs=[file_input, mode_input, upscale_input], 
-        outputs=[file_output]
+        outputs=[file_output, log_output]
     )
 
 if __name__ == "__main__":
-    # PENTING: Pengaturan khusus agar bisa berjalan di Render.com
     app.queue(default_concurrency_limit=1).launch(server_name="0.0.0.0", server_port=10000)
